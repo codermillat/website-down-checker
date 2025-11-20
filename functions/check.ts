@@ -1,4 +1,6 @@
 
+import psl from "psl";
+
 // Cloudflare Pages Function Types
 // Defined locally to avoid needing external dependencies
 interface EventContext {
@@ -11,6 +13,14 @@ interface EventContext {
   params: Record<string, any>;
   data: Record<string, any>;
 }
+
+const getRegistrableDomain = (host: string): string => {
+  const parsed = psl.parse(host);
+  if (typeof parsed === "string") {
+    return host;
+  }
+  return parsed.domain || host;
+};
 
 export async function onRequest(context: EventContext): Promise<Response> {
   const urlStr = new URL(context.request.url).searchParams.get("url");
@@ -28,16 +38,18 @@ export async function onRequest(context: EventContext): Promise<Response> {
     targetUrl = "https://" + targetUrl;
   }
 
-  // Extract domain for DNS and WHOIS
-  let domain = "";
+  // Extract hostname for lookups
+  let hostname = "";
   try {
-    domain = new URL(targetUrl).hostname;
+    hostname = new URL(targetUrl).hostname;
   } catch (e) {
     return new Response(JSON.stringify({ error: "Invalid URL format" }), {
       headers: { "Content-Type": "application/json" },
       status: 400 
     });
   }
+
+  const registrableDomain = getRegistrableDomain(hostname);
 
   const startTime = Date.now();
 
@@ -75,7 +87,7 @@ export async function onRequest(context: EventContext): Promise<Response> {
   // 2. DNS Lookup (Google DoH)
   const resolveDns = async (type: string) => {
     try {
-      const res = await fetch(`https://dns.google/resolve?name=${domain}&type=${type}`, {
+      const res = await fetch(`https://dns.google/resolve?name=${hostname}&type=${type}`, {
         headers: { "Accept": "application/dns-json" }
       });
       if (!res.ok) return [];
@@ -89,7 +101,7 @@ export async function onRequest(context: EventContext): Promise<Response> {
   // 3. WHOIS Lookup (Free API)
   const checkWhois = async () => {
     try {
-      const res = await fetch(`https://api.whois.vu/?q=${domain}`);
+      const res = await fetch(`https://api.whois.vu/?q=${registrableDomain}`);
       if (!res.ok) return { error: "Lookup failed" };
       return await res.json();
     } catch (e) {
@@ -121,7 +133,8 @@ export async function onRequest(context: EventContext): Promise<Response> {
 
   // Construct final response
   const finalResponse = {
-    url: domain,
+    url: hostname,
+    domain: registrableDomain,
     result: httpResult,
     dns: {
       A: dnsA,
