@@ -1,0 +1,5 @@
+{
+  "name": "Website Down Checker",
+  "description": "A fast and minimal tool to check if a website is up or down using Cloudflare Pages Functions.",
+  "requestFramePermissions": []
+}
