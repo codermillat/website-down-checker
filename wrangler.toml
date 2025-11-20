@@ -1,3 +1,4 @@
 name = "website-down-checker"
 compatibility_date = "2024-11-20"
 pages_build_output_dir = "dist"
+build_command = "npm run build"
