@@ -17,7 +17,7 @@ This project is designed to be deployed on **Cloudflare Pages**.
 
 3.  **Build Settings**:
     *   **Framework Preset**: `Vite`
-    *   **Build Command**: `npm run build`
+    *   **Build Command**: `npm run build` (You **MUST** set this in the dashboard settings if it's not auto-detected)
     *   **Build Output Directory**: `dist`
 
 4.  **Functions**:
