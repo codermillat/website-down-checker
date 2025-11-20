@@ -48,8 +48,23 @@ interface DnsRecord {
   data: string;
 }
 
+interface WhoisInfo {
+  domain?: string;
+  registrar?: string;
+  available?: string;
+  type?: string;
+  statuses?: string[];
+  created?: string;
+  updated?: string;
+  expires?: string;
+  nameServers?: string[];
+  rawText?: string;
+  error?: string;
+}
+
 interface ApiResult {
   url: string;
+  domain: string;
   result: {
     status: 'UP' | 'DOWN' | 'ERROR'; // Added ERROR for preview/fallback
     httpCode: number;
@@ -64,7 +79,7 @@ interface ApiResult {
     TXT: DnsRecord[];
   };
   ip: string;
-  whois: any;
+  whois: WhoisInfo;
 }
 
 interface LocalStatusState {
@@ -113,12 +128,27 @@ const DnsTable = ({ type, records }: { type: string, records: DnsRecord[] }) => 
   );
 };
 
-const WhoisRow = ({ label, value }: { label: string, value: any }) => {
-  if (!value) return null;
+const formatDate = (value?: string) => {
+  if (!value) return undefined;
+  const parsed = new Date(value);
+  if (!isNaN(parsed.getTime())) {
+    return parsed.toUTCString();
+  }
+  return value;
+};
+
+const WhoisRow = ({ label, value }: { label: string, value?: React.ReactNode }) => {
+  if (
+    value === undefined ||
+    value === null ||
+    (typeof value === 'string' && value.trim() === '')
+  ) {
+    return null;
+  }
   return (
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 sm:gap-4 py-2 border-b border-slate-100 last:border-0 text-sm">
       <dt className="font-medium text-slate-500">{label}</dt>
-      <dd className="sm:col-span-2 text-slate-800 break-words">{typeof value === 'object' ? JSON.stringify(value) : value}</dd>
+      <dd className="sm:col-span-2 text-slate-800 break-words">{value}</dd>
     </div>
   );
 };
@@ -130,6 +160,7 @@ export const StatusChecker: React.FC = () => {
   // UI State for collapsible sections
   const [showDns, setShowDns] = useState(false);
   const [showWhois, setShowWhois] = useState(false);
+  const [showWhoisRaw, setShowWhoisRaw] = useState(false);
 
   const handleCheck = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -138,6 +169,7 @@ export const StatusChecker: React.FC = () => {
     // Reset UI
     setShowDns(false);
     setShowWhois(false);
+    setShowWhoisRaw(false);
 
     let target = url.trim();
     // Basic client validation
@@ -304,17 +336,62 @@ export const StatusChecker: React.FC = () => {
 
                   {showWhois && (
                     <div className="mt-4 bg-slate-50 rounded-lg border border-slate-100 p-4 animate-in slide-in-from-top-2 fade-in duration-200">
-                       {!state.data.whois || state.data.whois.error ? (
+                      {!state.data.whois || state.data.whois.error ? (
                          <p className="text-sm text-slate-500 italic">WHOIS lookup failed or data unavailable.</p>
                        ) : (
-                         <dl>
-                           <WhoisRow label="Domain" value={state.data.whois.domain} />
-                           <WhoisRow label="Registrar" value={state.data.whois.registrar} />
-                           <WhoisRow label="Created" value={state.data.whois.creation_date || state.data.whois.created} />
-                           <WhoisRow label="Expires" value={state.data.whois.expiration_date || state.data.whois.expires} />
-                           <WhoisRow label="Status" value={state.data.whois.status} />
-                           <WhoisRow label="Name Servers" value={state.data.whois.whois_server || state.data.whois.nameservers} />
-                         </dl>
+                         <>
+                           <dl>
+                             <WhoisRow label="Domain" value={state.data.whois.domain || state.data.domain} />
+                             <WhoisRow label="Registrar" value={state.data.whois.registrar} />
+                             <WhoisRow label="Availability" value={state.data.whois.available} />
+                             <WhoisRow label="TLD Type" value={state.data.whois.type} />
+                             <WhoisRow label="Created" value={formatDate(state.data.whois.created)} />
+                             <WhoisRow label="Updated" value={formatDate(state.data.whois.updated)} />
+                             <WhoisRow label="Expires" value={formatDate(state.data.whois.expires)} />
+                             <WhoisRow 
+                               label="Name Servers" 
+                               value={
+                                 state.data.whois.nameServers && state.data.whois.nameServers.length > 0 ? (
+                                   <ul className="space-y-1">
+                                     {state.data.whois.nameServers.map((ns, idx) => (
+                                       <li key={ns + idx} className="font-mono text-xs sm:text-sm">{ns}</li>
+                                     ))}
+                                   </ul>
+                                 ) : undefined
+                               } 
+                             />
+                           </dl>
+
+                           {state.data.whois.statuses && state.data.whois.statuses.length > 0 && (
+                             <div className="mt-4">
+                               <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Statuses</div>
+                               <div className="flex flex-wrap gap-2">
+                                 {state.data.whois.statuses.map((status: string) => (
+                                   <span key={status} className="px-2 py-1 bg-white border border-slate-200 rounded-full text-xs font-medium text-slate-600">
+                                     {status}
+                                   </span>
+                                 ))}
+                               </div>
+                             </div>
+                           )}
+
+                           {state.data.whois.rawText && (
+                             <div className="mt-4">
+                               <button
+                                 type="button"
+                                 onClick={() => setShowWhoisRaw(prev => !prev)}
+                                 className="text-xs font-semibold text-brand-600 hover:text-brand-700 transition-colors"
+                               >
+                                 {showWhoisRaw ? 'Hide raw WHOIS' : 'Show raw WHOIS record'}
+                               </button>
+                               {showWhoisRaw && (
+                                 <pre className="mt-3 bg-white border border-slate-200 rounded-lg p-3 text-xs text-slate-700 whitespace-pre-wrap max-h-64 overflow-y-auto">
+                                   {state.data.whois.rawText}
+                                 </pre>
+                               )}
+                             </div>
+                           )}
+                         </>
                        )}
                     </div>
                   )}

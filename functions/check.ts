@@ -22,6 +22,58 @@ const getRegistrableDomain = (host: string): string => {
   return parsed.domain || host;
 };
 
+const normalizeTimestamp = (value: any): string | undefined => {
+  if (!value && value !== 0) return undefined;
+  if (typeof value === "number") {
+    return new Date(value * 1000).toISOString();
+  }
+  if (typeof value === "string") {
+    const numeric = Number(value);
+    if (!isNaN(numeric)) {
+      return new Date(numeric * 1000).toISOString();
+    }
+    const parsed = Date.parse(value);
+    if (!isNaN(parsed)) {
+      return new Date(parsed).toISOString();
+    }
+    return value;
+  }
+  return undefined;
+};
+
+const buildWhoisSummary = (source: any, fallbackDomain: string) => {
+  if (!source || source.error) {
+    return source || { error: "Lookup failed" };
+  }
+
+  const statuses = Array.isArray(source.statuses)
+    ? source.statuses
+    : source.status
+      ? Array.isArray(source.status)
+        ? source.status
+        : [source.status]
+      : undefined;
+
+  const nameServers = Array.isArray(source.nameservers)
+    ? source.nameservers
+    : typeof source.nameservers === "string"
+      ? source.nameservers.split(/\s+/).filter(Boolean)
+      : undefined;
+
+  return {
+    domain: source.domain || fallbackDomain,
+    registrar: source.registrar,
+    available: source.available,
+    type: source.type,
+    statuses,
+    created: normalizeTimestamp(source.created || source.creation_date),
+    updated: normalizeTimestamp(source.updated || source.updated_date || source.modified),
+    expires: normalizeTimestamp(source.expires || source.expiration_date),
+    nameServers,
+    rawText: typeof source.whois === "string" ? source.whois : undefined
+  };
+};
+
 export async function onRequest(context: EventContext): Promise<Response> {
   const urlStr = new URL(context.request.url).searchParams.get("url");
 
@@ -131,6 +183,8 @@ export async function onRequest(context: EventContext): Promise<Response> {
   // Extract IP from A record
   const ip = dnsA.length > 0 ? dnsA[0].data : "Not found";
 
+  const whoisSummary = buildWhoisSummary(whoisData, registrableDomain);
+
   // Construct final response
   const finalResponse = {
     url: hostname,
@@ -144,7 +198,7 @@ export async function onRequest(context: EventContext): Promise<Response> {
       TXT: dnsTXT
     },
     ip: ip,
-    whois: whoisData
+    whois: whoisSummary
   };
 
   return new Response(JSON.stringify(finalResponse), {
